@@ -4,15 +4,23 @@ googlebook_api
 
 import yaml
 import requests
+import string
 from thefuzz import fuzz
 
 with open("settings.yaml") as yaml_file:
     settings = yaml.safe_load(yaml_file)
 
-def search_books(title):
+def _remove_punctuation(text):
+    translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
+    return text.translate(translator)
+
+def search(title):
+    
+    title_rm = _remove_punctuation(title)
+
     url = "https://www.googleapis.com/books/v1/volumes"
     params = {
-        "q": f"intitle:{title}",
+        "q": f"intitle:{title_rm}",
         "maxResults": 1,  # Number of results to retrieve
         "key": settings["GOOGLEBOOK_API"]  # Replace with your actual API key
     }
@@ -31,7 +39,7 @@ def search_books(title):
             categories = volume_info.get("categories", [])
 
             rt = book_title + " " + book_subtitle
-            if fuzz.ratio(title.lower(), rt.lower()) > 95:
+            if fuzz.token_set_ratio(title.lower(), rt.lower()) > 95:
                 ret = {}
                 ret["title"] = rt
                 ret["abstract"] = description
