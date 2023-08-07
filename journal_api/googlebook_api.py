@@ -13,7 +13,7 @@ def search_books(title):
     url = "https://www.googleapis.com/books/v1/volumes"
     params = {
         "q": f"intitle:{title}",
-        "maxResults": 5,  # Number of results to retrieve
+        "maxResults": 1,  # Number of results to retrieve
         "key": settings["GOOGLEBOOK_API"]  # Replace with your actual API key
     }
 
@@ -28,10 +28,17 @@ def search_books(title):
             book_subtitle = volume_info.get("subtitle", "")
             authors = volume_info.get("authors", [])
             description = volume_info.get("description", "")
+            categories = volume_info.get("categories", [])
 
             rt = book_title + " " + book_subtitle
             if fuzz.ratio(title.lower(), rt.lower()) > 95:
-                return {"title": rt, "authors": authors, "desc": description}
-            return ""
-    else:
-        return ""
+                ret = {}
+                ret["title"] = rt
+                ret["abstract"] = description
+                ret["tldr"] = ""
+                ret["fieldOfStudy"] = categories
+                ret["authors"] = [str(i) for i in authors]
+                ret["references"] = []
+                return ret
+            return None
+    return None

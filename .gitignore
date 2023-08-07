@@ -1,3 +1,5 @@
 settings.yaml
 __pycache__
 journal_api/__pycache__
+.ipynb_checkpoints
+lib
