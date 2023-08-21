@@ -2,6 +2,9 @@
 crossref_api
 """
 import requests
+from requests.exceptions import ReadTimeout
+import logging
+
 import pandas as pd
 import numpy as np
 import json
@@ -12,10 +15,19 @@ from thefuzz import fuzz
 with open("settings.yaml") as yaml_file:
     settings = yaml.safe_load(yaml_file)
 
+with open('logging_config.yaml', 'r') as config_file:
+    log_config = yaml.safe_load(config_file)
+
 proxies = {
     'http': settings["HTTP_PROXY"],
     'https': settings["HTTPS_PROXY"],
 }
+
+timeout = settings["REQUEST_TIMEOUT"]
+logging.config.dictConfig(log_config)
+
+
+
 
 def _remove_punctuation(text):
     translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
@@ -28,25 +40,58 @@ def _remake_authors(data):
             author = " ".join([author.get("given", ""), author.get("family","")])
             ret.append(author)
     else:
-        print("WARN: No authors!")
+        logging.warn(f"cr._remake_authors: No authors!")
     return ret
 
-def _remake_references(data):
+def _remake_references(data, year):
     ret = []
     if data != "" and len(data) > 0:
         for ref in data:
             if ref.get("article-title", "") != "":
-                ret.append(ref["article-title"])
+                y = ref.get("year", "")
+                if y != "" and y != None:
+                    if int(y) >= year:
+                        ret.append(ref["article-title"])
+                else:
+                    logging.warn(f"cr._remake_references: Unknown year. title={ref['article-title']}")
+                    ret.append(ref["article-title"])
+            elif ref.get("volume-title", "") != "":
+                y = ref.get("year", "")
+                if y != "" and y != None:
+                    if int(y) >= year:
+                        ret.append(ref["volume-title"])
+                else:
+                    logging.warn(f"cr._remake_references: Unknown year. title={ref['volume-title']}")
+                    ret.append(ref["volume-title"])
             elif ref.get("DOI", "") != "":
-                ret.append(search_title_by_doi(ref["DOI"]))
+                y = ref.get("year", "")
+                if y != "" and y != None:
+                    if int(y) >= year:
+                        title, y = search_title_n_year_by_doi(ref["DOI"])
+                        if title != "":
+                            ret.append(title)
+                else:
+                    title, y = search_title_n_year_by_doi(ref["DOI"])
+                    if y != "" and int(y) >= year and title != "":
+                        ret.append(title)
             else:
-                print("WARN: No information of reference", ref)
+                logging.warn(f"cr._remake_references: No information of reference")
+                logging.debug(f"{ref}")
     else:
-        print("WARN: No reference!")
+        logging.warn(f"cr._remake_references: No references!")
     return ret
 
 
-def search(title):
+def _remake_year(data):
+    ret = ""
+    if data != "":
+        if data.get("date-parts", "") != "" and len(data["date-parts"]) > 0:
+            date = data["date-parts"][0]
+            ret = date[0] if len(date) > 0 else ""
+    return ret
+
+
+def search(title, start_year = 2010):
     """
     search
     """
@@ -58,14 +103,21 @@ def search(title):
         "rows": 1  # Number of results to retrieve
     }
 
-    # Send the API request
-    if settings["USE_PROXY"] == True:
-        response = requests.get(url, params=params, proxies=proxies, timeout=15)
-    else:
-        response = requests.get(url, params=params, timeout=15)
+    data = ""
+    try:
+        # Send the API request
+        if settings["USE_PROXY"] == True:
+            response = requests.get(url, params=params, proxies=proxies, timeout=timeout)
+        else:
+            response = requests.get(url, params=params, timeout=timeout)
+        response.raise_for_status()
 
-    # Parse the JSON response
-    data = response.json()
+        if response.status_code == 200:
+            data = response.json()
+    except ReadTimeout:
+        logging.error(f"cr.search: Request timed out.")
+    except requests.RequestException as e:
+        logging.error(f"cr.search: An error occurred: {e}")
 
     # Extract the relevant information from the response
     if data.get("status", "") != "" and data["status"] == "ok":
@@ -76,18 +128,25 @@ def search(title):
             if(paper.get("title", "") != "" and len(paper["title"]) > 0):
                 title_f = paper["title"][0]
                 if fuzz.token_set_ratio(title.lower(), title_f.lower()) == 100:  # check if the result is same with the query
+                    logging.debug(f"cr.search: Found! title={title_f}")
+                    year = _remake_year(paper.get("published", ""))
+                    if year != "" and year < start_year:
+                        logging.debug(f"cr.search: Unmatched. year={year}, start_year={start_year}")
+                        return None
                     new_paper = {}
                     new_paper["title"] = title_f
                     new_paper["abstract"] = paper.get("abstract", "")
                     new_paper["tldr"] = ""
-                    new_paper["fieldOfStudy"] = paper.get("subject", [])
+                    new_paper["year"] = year
+                    new_paper["fieldsOfStudy"] = paper.get("subject", [])
                     new_paper["authors"] = _remake_authors(paper.get("author",""))
-                    new_paper["references"] = _remake_references(paper.get("reference",""))
+                    new_paper["references"] = _remake_references(paper.get("reference",""), start_year)
+                    new_paper["source"] = "crossref"
                     return new_paper
                 else:
-                    print("WARN: Found! Title doesn't matched. Title:", title, ", Found:", title_f)
+                    logging.warn(f"cr.search: Found! Title doesn't matched. Title:{title}, Found:{title_f}")
             else:
-                print("ERROR: Not found")
+                logging.error(f"cr.search: Not found!")
     return None
 
 
@@ -127,29 +186,37 @@ def reference_doi_list(data):
     return "go"
 
 
-def search_title_by_doi(doi):
+def search_title_n_year_by_doi(doi):
     base_url = "https://api.crossref.org/works/"
     url = base_url + doi
 
     data = ""
-    if settings["USE_PROXY"] == True:
-        response = requests.get(url, proxies=proxies, timeout=10)
-    else:
-        response = requests.get(url, timeout=10)
-    if response.status_code == 200:
-        data = response.json()
+    try:
+        if settings["USE_PROXY"] == True:
+            response = requests.get(url, proxies=proxies, timeout=timeout)
+        else:
+            response = requests.get(url, timeout=timeout)
+
+        if response.status_code == 200:
+            data = response.json()
+    except ReadTimeout:
+        logging.error(f"cr.search_title_n_year_by_doi: Request timed out.")
+    except requests.RequestException as e:
+        logging.error(f"cr.search_title_n_year_by_doi: An error occurred: {e}")
 
     # Extract the relevant information from the response
-    if data.get("status", "") != "" and data["status"] == "ok":
+    if data != "" and data.get("status", "") != "" and data["status"] == "ok":
         paper = data["message"]
         
         # Access the paper information
         if(paper.get("title", "") != "" and len(paper["title"]) > 0):
             title = paper["title"][0]
-            return title
+            year = _remake_year(paper.get("published", ""))
+            return title, year
         else:
-            print("ERROR: Not found")
-    return ""
+            logging.error(f"cr.search_title_n_year_by_doi: Not found. doi={doi}")
+
+    return "", ""
 
 
 def similar_search(title, rows):
