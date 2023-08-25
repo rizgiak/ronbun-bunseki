@@ -43,7 +43,7 @@ def _remake_authors(data):
         logging.warn(f"cr._remake_authors: No authors!")
     return ret
 
-def _remake_references(data, year):
+def _remake_references(data, year, find_references = True):
     ret = []
     if data != "" and len(data) > 0:
         for ref in data:
@@ -64,16 +64,19 @@ def _remake_references(data, year):
                     logging.warn(f"cr._remake_references: Unknown year. title={ref['volume-title']}")
                     ret.append(ref["volume-title"])
             elif ref.get("DOI", "") != "":
-                y = ref.get("year", "")
-                if y != "" and y != None:
-                    if int(y) >= year:
+                if find_references:
+                    y = ref.get("year", "")
+                    if y != "" and y != None:
+                        if int(y) >= year:
+                            title, y = search_title_n_year_by_doi(ref["DOI"])
+                            if title != "":
+                                ret.append(title)
+                    else:
                         title, y = search_title_n_year_by_doi(ref["DOI"])
-                        if title != "":
+                        if y != "" and int(y) >= year and title != "":
                             ret.append(title)
                 else:
-                    title, y = search_title_n_year_by_doi(ref["DOI"])
-                    if y != "" and int(y) >= year and title != "":
-                        ret.append(title)
+                    logging.debug(f"cr._remake_references: doi={ref['DOI']}, find_reference = {find_references}")
             else:
                 logging.warn(f"cr._remake_references: No information of reference")
                 logging.debug(f"{ref}")
@@ -91,7 +94,7 @@ def _remake_year(data):
     return ret
 
 
-def search(title, start_year = 2010):
+def search(title, start_year = 2010, find_references = True):
     """
     search
     """
@@ -127,26 +130,28 @@ def search(title, start_year = 2010):
             # Access the paper information
             if(paper.get("title", "") != "" and len(paper["title"]) > 0):
                 title_f = paper["title"][0]
-                if fuzz.token_set_ratio(title.lower(), title_f.lower()) == 100:  # check if the result is same with the query
+                if fuzz.token_sort_ratio(title.lower(), title_f.lower()) > 95:  # check if the result is same with the query
                     logging.debug(f"cr.search: Found! title={title_f}")
                     year = _remake_year(paper.get("published", ""))
-                    if year != "" and year < start_year:
-                        logging.debug(f"cr.search: Unmatched. year={year}, start_year={start_year}")
-                        return None
+
                     new_paper = {}
                     new_paper["title"] = title_f
                     new_paper["abstract"] = paper.get("abstract", "")
                     new_paper["tldr"] = ""
                     new_paper["year"] = year
+                    if year != "" and year < start_year:
+                        logging.debug(f"cr.search: Unmatched. Skip all next input. year={year}, start_year={start_year}")
+                        return new_paper
+                    
                     new_paper["fieldsOfStudy"] = paper.get("subject", [])
                     new_paper["authors"] = _remake_authors(paper.get("author",""))
-                    new_paper["references"] = _remake_references(paper.get("reference",""), start_year)
+                    new_paper["references"] = _remake_references(paper.get("reference",""), start_year, find_references)
                     new_paper["source"] = "crossref"
                     return new_paper
                 else:
-                    logging.warn(f"cr.search: Found! Title doesn't matched. Title:{title}, Found:{title_f}")
+                    logging.debug(f"cr.search: Found! Title doesn't matched. title={title}, result={title_f}")
             else:
-                logging.error(f"cr.search: Not found!")
+                logging.debug(f"cr.search: Not found! title={title}")
     return None
 
 

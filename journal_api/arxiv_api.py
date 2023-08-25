@@ -27,20 +27,21 @@ def search(title, start_year=2010):
     )
 
     for result in search.results():
-        if fuzz.token_set_ratio(title.lower(), result.title.lower()) == 100:
+        if fuzz.token_sort_ratio(title.lower(), result.title.lower()) > 95:
             logging.debug(f"ax.search:  Matched! title={title}")
-            year = int(str(result.published)[:4]) if len(str(result.published)) > 3 else ""
-            if year != "" and year < start_year:
-                logging.debug(f"ax.search: Unmatched. year={year}, start_year={start_year}")
-                return None
+
             ret = {}
             ret["title"] = result.title
             ret["abstract"] = result.summary
             ret["tldr"] = ""
-            ret["year"] = year
+            ret["year"] = int(str(result.published)[:4]) if len(str(result.published)) > 3 else ""
             ret["fieldsOfStudy"] = result.categories
             ret["authors"] = [str(i) for i in result.authors]
             ret["references"] = []
             ret["source"] = "arxiv"
             return ret
+        else:
+            logging.debug(f"ax.search: Found! Title doesn't match! title={title}, result={result.title}")
+            return None
+    logging.debug(f"ax.search: Not found! title={title}")
     return None

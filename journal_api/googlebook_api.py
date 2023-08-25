@@ -69,21 +69,20 @@ def search(title, start_year = 2010):
             pubdate = volume_info.get("publishedDate", "")
 
             rt = book_title + " " + book_subtitle
-            if fuzz.token_set_ratio(title.lower(), rt.lower()) > 95:
+            if fuzz.token_sort_ratio(title.lower(), rt.lower()) > 95:
                 logging.debug(f"gb.search:  Matched! title={rt}")
-                year = int(pubdate[:4]) if len(pubdate) > 3 else ""
-                if year != "" and year < start_year:
-                    logging.debug(f"gb.search: Unmatched. year={year}, start_year={start_year}")
-                    return None
                 ret = {}
                 ret["title"] = rt
                 ret["abstract"] = description
                 ret["tldr"] = ""
-                ret["year"] = year
+                ret["year"] = int(pubdate[:4]) if len(pubdate) > 3 else ""
                 ret["fieldsOfStudy"] = categories
                 ret["authors"] = [str(i) for i in authors]
                 ret["references"] = []
                 ret["source"] = "gbook"
                 return ret
-            return None
+            else:
+                logging.debug(f"gb.search: Found! Title doesn't match! title={title}, result={rt}")
+                return None
+    logging.debug(f"gb.search: Not found! title={title}")
     return None

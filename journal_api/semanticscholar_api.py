@@ -61,6 +61,11 @@ def _remake_tldr(data):
         logging.warn(f"ss._remake_tldr: No tldr!")
     return ret
 
+def _remake_year(data):
+    if data == None:
+        data = ""
+    return data
+
 def search(title, start_year = 2010):
     title_rm = _remove_punctuation(title)
     url = "https://api.semanticscholar.org/graph/v1/paper/search"
@@ -89,18 +94,20 @@ def search(title, start_year = 2010):
         # Access the paper information
         if(paper.get("title", "") != ""):
             title_f = paper["title"]
-            if fuzz.token_set_ratio(title.lower(), title_f.lower()) == 100:  # check if the result is same with the query
-                logging.debug(f"ss.search:  Found! title={title_f}")
-                if paper.get("year", "") != "" and paper["year"] < start_year:
-                    logging.debug(f"cr.search: Unmatched. year={paper['year']}, start_year={start_year}")
-                    return None
+            if fuzz.token_sort_ratio(title.lower(), title_f.lower()) > 95:  # check if the result is same with the query
+                logging.debug(f"ss.search: Found! title={title_f}")
+                # REDUNDANT
+                # if paper.get("year", "") != ""  and paper["year"] != None and paper["year"] < start_year:
+                #     logging.debug(f"ss.search: Unmatched. year={paper['year']}, start_year={start_year}")
+                #     return None
+                paper["year"] = _remake_year(paper["year"])
                 paper["tldr"] = _remake_tldr(paper.get("tldr", ""))
                 paper["authors"] = _remake_authors(paper.get("authors", []))
                 paper["references"] = _remake_references(paper["references"], start_year)
                 paper["source"] = "semanticscholar"
                 return paper
             else:
-                logging.warn(f"ss.search: Found! Title doesn't matched. title={title}, found={title_f}")
+                logging.debug(f"ss.search: Found! Title doesn't matched. title={title}, result={title_f}")
         else:
-            logging.error(f"ss.search: Not found!")
+            logging.debug(f"ss.search: Not found! title={title}")
     return None
