@@ -3,6 +3,6 @@ __pycache__
 journal_api/__pycache__
 .ipynb_checkpoints
 lib
+data
 *.csv
-*.html
 *.log

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+
+<body>
+    <script src="https://d3js.org/d3.v3.min.js"></script>
+    <script>
+
+        const monitorWidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
+        const monitorHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
+
+        var width = monitorWidth,
+            height = monitorHeight,
+            activeNode = d3.select(null);
+
+        var zoom = d3.behavior.zoom()
+            .scaleExtent([0.1, 8])
+            .on("zoom", zoomed);
+
+        var force = d3.layout.force()
+            .size([width, height])
+            .charge(-300)
+            .linkDistance(40)
+            .on("tick", tick);
+
+        var drag = force.drag()
+            .on("dragstart", dragstart);
+
+        var svg = d3.select("body").append("svg")
+            .attr("width", width)
+            .attr("height", height);
+
+        var g = svg.append("g");
+
+        var link = g.selectAll(".link"),
+            node = g.selectAll(".node");
+
+        var neighbors = {};
+
+        const tooltip = d3.select("body").append("div")
+            .attr("id", "tooltip")
+            .style("position", "absolute")
+            .style("display", "none")
+            .style("background-color", "white")
+            .style("border", "1px solid gray")
+            .style("padding", "10px");
+
+        svg
+            .call(zoom)
+            .call(zoom.event);
+
+        svg.append("marker")
+            .attr("id", "arrow")
+            .attr("viewBox", "0 -5 10 10")
+            .attr("refX", 20)
+            .attr("markerWidth", 6)
+            .attr("markerHeight", 6)
+            .attr("orient", "auto")
+            .append("path")
+            .attr("d", "M0,-5L10,0L0,5")
+            .attr("fill", "#000");
+
+        d3.json("data/sample_output.json", function (error, graph) {
+            if (error) throw error;
+
+            force
+                .nodes(graph.nodes)
+                .links(graph.links)
+                .start();
+
+            link = link.data(graph.links)
+                .enter().append("line")
+                .attr("class", "links")
+                .style("stroke", "#bbb");
+
+            node = node.data(graph.nodes)
+                .enter().append("circle")
+                .attr("class", "node")
+                .attr("r", function (d) { return d.size * d.size + 5; })
+                .on("click", nodeClicked)
+                .on("mouseover", nodeMouseOver) // Add this line for tooltip display
+                .on("mouseout", nodeMouseOut); // Add this line for tooltip hiding
+            // .call(drag);
+
+            graph.links.forEach(function (link) {
+                if (!neighbors[link.source.index]) {
+                    neighbors[link.source.index] = {};
+                }
+                neighbors[link.source.index][link.target.index] = true;
+
+                if (!neighbors[link.target.index]) {
+                    neighbors[link.target.index] = {};
+                }
+                neighbors[link.target.index][link.source.index] = true;
+            });
+        });
+
+        function nodeMouseOver(d) {
+            // Display the tooltip with node's name
+            tooltip.html(`${d.name}`)
+                .style("left", (d3.event.pageX + 10) + "px")
+                .style("top", (d3.event.pageY - 10) + "px")
+                .style("display", "block");
+        }
+
+        function nodeMouseOut() {
+            // Hide the tooltip
+            tooltip.style("display", "none");
+        }
+
+        function tick() {
+            link.attr("x1", function (d) { return d.source.x; })
+                .attr("y1", function (d) { return d.source.y; })
+                .attr("x2", function (d) { return d.target.x; })
+                .attr("y2", function (d) { return d.target.y; });
+
+            node.attr("cx", function (d) { return d.x; })
+                .attr("cy", function (d) { return d.y; });
+        }
+
+        function nodeClicked(d) {
+            if (activeNode.node() === this) return reset();
+
+            // Reset previously active node
+            resetNodeStyles();
+            resetLinkStyles();
+
+            activeNode = d3.select(this).classed("active", true);
+            activeNode.style("fill", "orange");
+
+            highlightConnectedLinks(d);
+            highlightConnectedNodes(d);
+
+            var bbox = activeNode.node().getBBox(),
+                bounds = [[bbox.x, bbox.y], [bbox.x + bbox.width, bbox.y + bbox.height]];
+
+            var dx = bounds[1][0] - bounds[0][0],
+                dy = bounds[1][1] - bounds[0][1],
+                x = (bounds[0][0] + bounds[1][0]) / 2,
+                y = (bounds[0][1] + bounds[1][1]) / 2,
+                scale = Math.max(1, Math.min(2, 0.9 / Math.max(dx / width, dy / height))),
+                translate = [width / 2 - scale * x, height / 2 - scale * y];
+
+            svg.transition()
+                .duration(750)
+                .call(zoom.translate(translate).scale(scale).event);
+
+            // Show detailed information about the clicked node
+            showNodeDetails(d);
+        }
+
+        function highlightConnectedLinks(clickedNode) {
+            link.classed("active", false);
+            link.style("stroke", "#bbb");
+
+
+            link.filter(function (d) {
+                return d.source === clickedNode || d.target === clickedNode;
+            })
+                .classed("active", true)
+                .style("stroke", "#000")
+                .style("stroke-width", "3px")
+                .attr("marker-end", "url(#arrow)");
+        }
+
+        function highlightConnectedNodes(clickedNode) {
+            node.classed("base", true); // Reset all nodes to black
+            node.filter(function (d) {
+                return clickedNode === d || clickedNode.index in neighbors[d.index];
+            })
+                .classed("active", true)
+                .style("fill", function (d) {
+                    return clickedNode === d ? "orange" : "blue";
+                });
+        }
+
+        function resetNodeStyles() {
+            node.classed("active", false);
+            node.style("fill", "#999");
+        }
+
+        function resetLinkStyles() {
+            link.classed("active", false);
+            link.style("stroke", "#000")
+                .style("stroke-width", "1px")
+                .attr("marker-end", null); // Reset the stroke width to the default value
+        }
+
+        function reset() {
+            node.classed("active", false);
+            node.style("fill", "#000");
+            link.classed("active", false);
+            link.style("stroke", "#ccc")
+                .style("stroke-width", "1px")
+                .attr("marker-end", null);
+            activeNode = d3.select(null);
+
+            // Hide detailed information
+            hideNodeDetails();
+
+            svg.transition()
+                .duration(750)
+                .call(zoom.translate([0, 0]).scale(1).event);
+        }
+
+        function dragstart(d) {
+            d3.select(this).classed("fixed", d.fixed = true);
+        }
+
+        function zoomed() {
+            g.style("stroke-width", 1.5 / d3.event.scale + "px");
+            g.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
+        }
+
+        function showNodeDetails(node) {
+            const detailsDiv = d3.select("#node-details");
+            detailsDiv.style("display", "block")
+                .style("left", (d3.event.pageX + 10) + "px")
+                .style("top", (d3.event.pageY - 10) + "px")
+                .html(`<strong>Title:</strong> ${node.name}<br>
+                            <strong>Cited by:</strong> ${node.size}<br>
+                            <strong>Runtime:</strong> ${node.runtime} min`);
+        }
+
+        function hideNodeDetails() {
+            d3.select("#node-details").style("display", "none");
+        }
+
+    </script>
+    <div id="node-details"
+        style="position: absolute; display: none; background-color: white; border: 1px solid gray; padding: 10px;">
+    </div>
+    <div id="tooltip"
+        style="position: absolute; display: none; background-color: white; border: 1px solid gray; padding: 10px;">
+    </div>
+</body>
+
+</html>

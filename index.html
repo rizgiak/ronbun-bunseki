@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>JSON Data Retrieval</title>
+</head>
+
+<body>
+    <div id="data-display"></div>
+
+    <script>
+        // Fetch JSON data using JavaScript
+        fetch('http://127.0.0.1:5000/get_json_data')
+            .then(response => response.json())
+            .then(jsonData => {
+                // Display JSON data on the webpage
+                const dataDisplay = document.getElementById('data-display');
+                dataDisplay.textContent = JSON.stringify(jsonData, null, 2);
+            })
+            .catch(error => {
+                console.error('Error fetching JSON data:', error);
+            });
+    </script>
+</body>
+
+</html>
