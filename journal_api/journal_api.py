@@ -4,6 +4,7 @@ from journal_api import googlebook_api
 from journal_api import semanticscholar_api
 import yaml
 import logging
+import logging.config
 
 with open("settings.yaml") as yaml_file:
     settings = yaml.safe_load(yaml_file)

@@ -6,6 +6,7 @@ import yaml
 import requests
 from requests.exceptions import ReadTimeout
 import logging
+import logging.config
 import string
 from thefuzz import fuzz
 
@@ -79,6 +80,8 @@ def search(title, start_year = 2010):
                 ret["fieldsOfStudy"] = categories
                 ret["authors"] = [str(i) for i in authors]
                 ret["references"] = []
+                ret["citationCount"] = -1
+                ret["influentialCitationCount"] = -1
                 ret["source"] = "gbook"
                 return ret
             else:

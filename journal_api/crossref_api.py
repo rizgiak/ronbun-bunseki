@@ -4,6 +4,7 @@ crossref_api
 import requests
 from requests.exceptions import ReadTimeout
 import logging
+import logging.config
 
 import pandas as pd
 import numpy as np
@@ -146,10 +147,12 @@ def search(title, start_year = 2010, find_references = True):
                     new_paper["fieldsOfStudy"] = paper.get("subject", [])
                     new_paper["authors"] = _remake_authors(paper.get("author",""))
                     new_paper["references"] = _remake_references(paper.get("reference",""), start_year, find_references)
+                    new_paper["citationCount"] = -1
+                    new_paper["influentialCitationCount"] = -1
                     new_paper["source"] = "crossref"
                     return new_paper
                 else:
-                    logging.debug(f"cr.search: Found! Title doesn't matched. title={title}, result={title_f}")
+                    logging.debug(f"cr.search: Found! Title doesn't match! title={title}, result={title_f}")
             else:
                 logging.debug(f"cr.search: Not found! title={title}")
     return None

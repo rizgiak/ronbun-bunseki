@@ -59,7 +59,7 @@
             .attr("d", "M0,-5L10,0L0,5")
             .attr("fill", "#000");
 
-        d3.json("data/sample_output.json", function (error, graph) {
+        d3.json("data/output_1_1.json", function (error, graph) {
             if (error) throw error;
 
             force
@@ -145,7 +145,7 @@
                 .call(zoom.translate(translate).scale(scale).event);
 
             // Show detailed information about the clicked node
-            showNodeDetails(d);
+            showNodeDetails(d, d3.event);
         }
 
         function highlightConnectedLinks(clickedNode) {
@@ -211,14 +211,40 @@
             g.attr("transform", "translate(" + d3.event.translate + ")scale(" + d3.event.scale + ")");
         }
 
-        function showNodeDetails(node) {
+        function showNodeDetails(node, event) {
             const detailsDiv = d3.select("#node-details");
-            detailsDiv.style("display", "block")
-                .style("left", (d3.event.pageX + 10) + "px")
-                .style("top", (d3.event.pageY - 10) + "px")
-                .html(`<strong>Title:</strong> ${node.name}<br>
-                            <strong>Cited by:</strong> ${node.size}<br>
-                            <strong>Runtime:</strong> ${node.runtime} min`);
+
+            fetch(`http://127.0.0.1:5000/get_paper_detail/${node.name}`)
+                .then(response => response.json())
+                .then(jsonData => {
+                    const abstract = jsonData.abstract;
+                    const authors = jsonData.authors;
+                    const fieldsOfStudy = jsonData.fieldsOfStudy;
+                    const source = jsonData.source;
+                    const citationCount = jsonData.citationCount;
+                    if (citationCount == -1){
+                        citationCount = "No data"
+                    }
+                    const influentialCitationCount = jsonData.influentialCitationCount;
+                    if (influentialCitationCount == -1){
+                        influentialCitationCount = "No data"
+                    }
+                    detailsDiv.style("display", "block")
+                        .style("left", (10) + "px")
+                        .style("top", (10) + "px")
+                        .style("width", (monitorWidth / 2) + "px")
+                        .html(`<strong>Title:</strong> ${node.name}<br>
+                               <strong>Cited by:</strong> ${node.size}<br>
+                               <strong>Abstract:</strong> ${abstract}<br>
+                               <strong>Authors:</strong> ${authors}<br>
+                               <strong>Fields of study:</strong> ${fieldsOfStudy}<br>
+                               <strong>Worldwide Citation count:</strong> ${citationCount}<br>
+                               <strong>Influential Citation count:</strong> ${influentialCitationCount}<br>
+                               <strong>Source:</strong> ${source}`);
+                })
+                .catch(error => {
+                    console.error('Error fetching JSON data:', error);
+                });
         }
 
         function hideNodeDetails() {

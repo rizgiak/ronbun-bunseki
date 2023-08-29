@@ -6,6 +6,7 @@ import yaml
 import requests
 from requests.exceptions import ReadTimeout
 import logging
+import logging.config
 import string
 from thefuzz import fuzz
 
@@ -70,7 +71,7 @@ def search(title, start_year = 2010):
     title_rm = _remove_punctuation(title)
     url = "https://api.semanticscholar.org/graph/v1/paper/search"
     headers = {'x-api-key': settings["SS_API"]}
-    params={'query': title_rm, 'limit': 1, 'fields': 'title,abstract,tldr,fieldsOfStudy,year,authors,references.title,references.year'}
+    params={'query': title_rm, 'limit': 1, 'fields': 'title,abstract,tldr,fieldsOfStudy,year,authors,references.title,references.year,citationCount,influentialCitationCount'}
 
     data = ""
     try:
@@ -107,7 +108,7 @@ def search(title, start_year = 2010):
                 paper["source"] = "semanticscholar"
                 return paper
             else:
-                logging.debug(f"ss.search: Found! Title doesn't matched. title={title}, result={title_f}")
+                logging.debug(f"ss.search: Found! Title doesn't match! title={title}, result={title_f}")
         else:
             logging.debug(f"ss.search: Not found! title={title}")
     return None

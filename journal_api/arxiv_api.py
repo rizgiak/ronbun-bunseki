@@ -7,6 +7,7 @@ import arxiv
 import string
 from thefuzz import fuzz
 import logging
+import logging.config
 
 with open("logging_config.yaml", "r") as config_file:
     log_config = yaml.safe_load(config_file)
@@ -38,6 +39,8 @@ def search(title, start_year=2010):
             ret["fieldsOfStudy"] = result.categories
             ret["authors"] = [str(i) for i in result.authors]
             ret["references"] = []
+            ret["citationCount"] = -1
+            ret["influentialCitationCount"] = -1
             ret["source"] = "arxiv"
             return ret
         else:
