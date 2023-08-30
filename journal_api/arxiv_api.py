@@ -23,9 +23,13 @@ def _remove_punctuation(text):
 def search(title, start_year=2010):
     title_rm = _remove_punctuation(title)
 
-    search = arxiv.Search(
-        query=title_rm, max_results=1, sort_by=arxiv.SortCriterion.Relevance
-    )
+    try:
+        search = arxiv.Search(
+            query=title_rm, max_results=1, sort_by=arxiv.SortCriterion.Relevance
+        )
+    except Exception as e:
+        logging.error(f"ax.search: An error occurred: title={title}, msg={e}")
+        return None
 
     for result in search.results():
         if fuzz.token_sort_ratio(title.lower(), result.title.lower()) > 95:
