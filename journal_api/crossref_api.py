@@ -44,7 +44,7 @@ def _remake_authors(data):
         logging.warn(f"cr._remake_authors: No authors!")
     return ret
 
-def _remake_references(data, year, find_references = True):
+def _remake_references(data, year = 2010, find_references = True):
     ret = []
     if data != "" and len(data) > 0:
         for ref in data:
@@ -142,6 +142,9 @@ def search(title, start_year = 2010, find_references = True):
                     new_paper["year"] = year
                     if year != "" and year < start_year:
                         logging.debug(f"cr.search: Unmatched. Skip all next input. year={year}, start_year={start_year}")
+                        new_paper["fieldsOfStudy"] = []
+                        new_paper["authors"] = ""
+                        new_paper["references"] = -1
                         return new_paper
                     
                     new_paper["fieldsOfStudy"] = paper.get("subject", [])

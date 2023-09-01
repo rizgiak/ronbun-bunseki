@@ -40,11 +40,13 @@ def _remake_authors(data):
     return ret
 
 def _remake_references(data, year):
+    year_flag = False
     ret = []
     if len(data) > 0:
         for i in data:
             y = i.get("year", "")
             if y != "" and y != None:
+                year_flag = True
                 if int(y) >= year:
                     ret.append(i["title"])
             else:
@@ -52,6 +54,12 @@ def _remake_references(data, year):
                 ret.append(i["title"])
     else:
         logging.warn(f"ss._remake_references: No references!")
+    
+    # if all references below year
+    if year_flag and len(ret) == 0:
+        logging.warn(f"ss._remake_references: All references below start year!")
+        ret = -1
+
     return ret
 
 def _remake_tldr(data):
@@ -67,7 +75,7 @@ def _remake_year(data):
         data = ""
     return data
 
-def search(title, start_year = 2010):
+def search(title, start_year = 2010, filter_year_for_all = False):
     title_rm = _remove_punctuation(title)
     url = "https://api.semanticscholar.org/graph/v1/paper/search"
     headers = {'x-api-key': settings["SS_API"]}
@@ -98,9 +106,10 @@ def search(title, start_year = 2010):
             if fuzz.token_sort_ratio(title.lower(), title_f.lower()) > 95:  # check if the result is same with the query
                 logging.debug(f"ss.search: Found! title={title_f}")
                 # REDUNDANT
-                # if paper.get("year", "") != ""  and paper["year"] != None and paper["year"] < start_year:
-                #     logging.debug(f"ss.search: Unmatched. year={paper['year']}, start_year={start_year}")
-                #     return None
+                if filter_year_for_all:
+                    if paper.get("year", "") != ""  and paper["year"] != None and paper["year"] < start_year:
+                        logging.debug(f"ss.search: Unmatched. year={paper['year']}, start_year={start_year}")
+                        return None
                 paper["year"] = _remake_year(paper["year"])
                 paper["tldr"] = _remake_tldr(paper.get("tldr", ""))
                 paper["authors"] = _remake_authors(paper.get("authors", []))

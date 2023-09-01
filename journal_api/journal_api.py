@@ -32,23 +32,26 @@ class JournalAPI:
             res = semanticscholar_api.search(title, year) 
         return res
 
-    def _remake_result(self, result, pos, find_references = True):
+    def _remake_result(self, result = None, pos = 0, year = 2010, find_references = True):
         if (result == None):
             return None
         dic = ["abstract", "year", "fieldsOfStudy", "authors", "references"]
-        l   = [result[dic[0]] == "", result[dic[1]] == "", result[dic[2]] == "", len(result[dic[3]]) == 0, len(result[dic[4]]) == 0]
+        l   = [result[dic[0]] == "", result[dic[1]] == "", result[dic[2]] == "", len(result[dic[3]]) == 0, result[dic[4]] != -1 and len(result[dic[4]]) == 0]
 
         if any(l): # data not completed
             logging.debug(f"journal_api._remake_result: l={l}")
             for i in range(pos + 1, self._max_pos + 1):
-                rc = self._dic_library(result["title"], i, find_references)
+                rc = self._dic_library(result["title"], pos = i, year = year, find_references = find_references)
+                if self._year_limitation(rc, year): # year limitation
+                    logging.debug(f"journal_api._remake_result: Year limitation. year={rc['year']}, start_year={rc}")
+                    return None
                 if rc != None:
-                    r = [rc["abstract"] == "", rc["year"] == "", rc["fieldsOfStudy"] == "", len(rc["authors"]) == 0, len(rc["references"]) == 0]
+                    r = [rc[dic[0]] == "", rc[dic[1]] == "", rc[dic[2]] == "", len(rc[dic[3]]) == 0, rc[dic[4]] != -1 and len(rc[dic[4]]) == 0]
                     for index, value in enumerate(l):
                         if(value == True and r[index] == False):
                             l[index] = False
                             result[dic[index]] = rc[dic[index]]
-                    if not any(l):
+                    if not any(l): # if [False, False, False, False]
                         break
 
         return result
@@ -69,6 +72,11 @@ class JournalAPI:
             result["references"] = refs
         return result
 
+    def _year_limitation(self, res, year):
+        if (res != None and res["year"] != "" and res["year"] < year):
+            return True
+        return False
+
     def search(self, title, start_year = 2010, find_references = True, fix_references = True):
         """
         search\n
@@ -81,10 +89,10 @@ class JournalAPI:
         res = None
         for i in range(self._max_pos + 1):
             res = self._dic_library(title, i, start_year, find_references)
-            if (res != None and res["year"] != "" and res["year"] < start_year): # year limitation
-                logging.debug(f"journal_api.search: Year limitation. year={res['year']}, start_year={start_year}")
+            if self._year_limitation(res, start_year): # year limitation
+                logging.debug(f"journal_api.search: _dic_library, Year limitation. year={res['year']}, start_year={start_year}")
                 return None
-            res = self._remake_result(res, i, find_references)
+            res = self._remake_result(result = res, pos = i, year = start_year, find_references = find_references)
             if fix_references:
                 res = self._fix_references(res, start_year)
             if(res != None):
