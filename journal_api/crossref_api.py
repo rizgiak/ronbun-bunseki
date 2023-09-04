@@ -16,68 +16,73 @@ from thefuzz import fuzz
 with open("settings.yaml") as yaml_file:
     settings = yaml.safe_load(yaml_file)
 
-with open('logging_config.yaml', 'r') as config_file:
+with open("logging_config.yaml", "r") as config_file:
     log_config = yaml.safe_load(config_file)
 
 proxies = {
-    'http': settings["HTTP_PROXY"],
-    'https': settings["HTTPS_PROXY"],
+    "http": settings["HTTP_PROXY"],
+    "https": settings["HTTPS_PROXY"],
 }
 
 timeout = settings["REQUEST_TIMEOUT"]
 logging.config.dictConfig(log_config)
 
 
-
-
 def _remove_punctuation(text):
-    translator = str.maketrans(string.punctuation, ' ' * len(string.punctuation))
+    translator = str.maketrans(string.punctuation, " " * len(string.punctuation))
     return text.translate(translator)
+
 
 def _remake_authors(data):
     ret = []
     if data != "" and len(data) > 0:
         for author in data:
-            author = " ".join([author.get("given", ""), author.get("family","")])
+            author = " ".join([author.get("given", ""), author.get("family", "")])
             ret.append(author)
     else:
         logging.warn(f"cr._remake_authors: No authors!")
     return ret
 
-def _remake_references(data, year = 2010, find_references = True):
+
+def _add_title_to_ret(title, year, skip_unknown_year, ret, ref_year):
+    if ref_year != "" and ref_year is not None:
+        if int(ref_year) >= year:
+            ret.append(title)
+    else:
+        logging.warn(
+            f"cr._remake_references: Unknown year. skip_unknown_year={skip_unknown_year}, title={title}"
+        )
+        if not skip_unknown_year:
+            ret.append(title)
+
+
+def _remake_references(data, year=2010, find_references=True, skip_unknown_year=False):
     ret = []
     if data != "" and len(data) > 0:
         for ref in data:
             if ref.get("article-title", "") != "":
-                y = ref.get("year", "")
-                if y != "" and y != None:
-                    if int(y) >= year:
-                        ret.append(ref["article-title"])
-                else:
-                    logging.warn(f"cr._remake_references: Unknown year. title={ref['article-title']}")
-                    ret.append(ref["article-title"])
+                _add_title_to_ret(
+                    ref.get("article-title", ""),
+                    year,
+                    skip_unknown_year,
+                    ret,
+                    ref.get("year", ""),
+                )
             elif ref.get("volume-title", "") != "":
-                y = ref.get("year", "")
-                if y != "" and y != None:
-                    if int(y) >= year:
-                        ret.append(ref["volume-title"])
-                else:
-                    logging.warn(f"cr._remake_references: Unknown year. title={ref['volume-title']}")
-                    ret.append(ref["volume-title"])
+                _add_title_to_ret(
+                    ref.get("volume-title", ""),
+                    year,
+                    skip_unknown_year,
+                    ret,
+                    ref.get("year", ""),
+                )
             elif ref.get("DOI", "") != "":
                 if find_references:
-                    y = ref.get("year", "")
-                    if y != "" and y != None:
-                        if int(y) >= year:
-                            title, y = search_title_n_year_by_doi(ref["DOI"])
-                            if title != "":
-                                ret.append(title)
-                    else:
-                        title, y = search_title_n_year_by_doi(ref["DOI"])
-                        if y != "" and int(y) >= year and title != "":
-                            ret.append(title)
+                    title, y = search_title_n_year_by_doi(ref["DOI"])
+                    if y != "" and y is not None and int(y) >= year and title != "":
+                        ret.append(title)
                 else:
-                    logging.debug(f"cr._remake_references: doi={ref['DOI']}, find_reference = {find_references}")
+                    logging.debug(f"cr._remake_references: doi={ref['DOI']}, find_reference={find_references}")
             else:
                 logging.warn(f"cr._remake_references: No information of reference")
                 logging.debug(f"{ref}")
@@ -95,23 +100,22 @@ def _remake_year(data):
     return ret
 
 
-def search(title, start_year = 2010, find_references = True):
+def search(title, start_year=2010, find_references=True, skip_unknown_year=False):
     """
     search
     """
     title_rm = _remove_punctuation(title)
     url = "https://api.crossref.org/works"
 
-    params = {
-        "query.title": title_rm,
-        "rows": 1  # Number of results to retrieve
-    }
+    params = {"query.title": title_rm, "rows": 1}  # Number of results to retrieve
 
     data = ""
     try:
         # Send the API request
         if settings["USE_PROXY"] == True:
-            response = requests.get(url, params=params, proxies=proxies, timeout=timeout)
+            response = requests.get(
+                url, params=params, proxies=proxies, timeout=timeout
+            )
         else:
             response = requests.get(url, params=params, timeout=timeout)
         response.raise_for_status()
@@ -119,19 +123,21 @@ def search(title, start_year = 2010, find_references = True):
         if response.status_code == 200:
             data = response.json()
     except ReadTimeout:
-        logging.error(f"cr.search: Request timed out.")
+        logging.error(f"cr.search: Request timed out. title={title}")
     except requests.RequestException as e:
-        logging.error(f"cr.search: An error occurred: {e}")
+        logging.error(f"cr.search: An error occurred: {e}, title={title}")
 
     # Extract the relevant information from the response
-    if data.get("status", "") != "" and data["status"] == "ok":
+    if data != "" and data.get("status", "") != "" and data["status"] == "ok":
         papers = data["message"]["items"]
         if len(papers) > 0:
             paper = papers[0]
             # Access the paper information
-            if(paper.get("title", "") != "" and len(paper["title"]) > 0):
+            if paper.get("title", "") != "" and len(paper["title"]) > 0:
                 title_f = paper["title"][0]
-                if fuzz.token_sort_ratio(title.lower(), title_f.lower()) > 95:  # check if the result is same with the query
+                if (
+                    fuzz.token_sort_ratio(title.lower(), title_f.lower()) > 95
+                ):  # check if the result is same with the query
                     logging.debug(f"cr.search: Found! title={title_f}")
                     year = _remake_year(paper.get("published", ""))
 
@@ -141,23 +147,33 @@ def search(title, start_year = 2010, find_references = True):
                     new_paper["tldr"] = ""
                     new_paper["year"] = year
                     if year != "" and year < start_year:
-                        logging.debug(f"cr.search: Unmatched. Skip all next input. year={year}, start_year={start_year}")
+                        logging.debug(
+                            f"cr.search: Unmatched. Skip all next input. year={year}, start_year={start_year}"
+                        )
                         new_paper["fieldsOfStudy"] = []
                         new_paper["authors"] = ""
                         new_paper["references"] = -1
                         return new_paper
-                    
+
                     new_paper["fieldsOfStudy"] = paper.get("subject", [])
-                    new_paper["authors"] = _remake_authors(paper.get("author",""))
-                    new_paper["references"] = _remake_references(paper.get("reference",""), start_year, find_references)
+                    new_paper["authors"] = _remake_authors(paper.get("author", ""))
+                    new_paper["references"] = _remake_references(
+                        paper.get("reference", ""),
+                        start_year,
+                        find_references,
+                        skip_unknown_year,
+                    )
                     new_paper["citationCount"] = -1
                     new_paper["influentialCitationCount"] = -1
                     new_paper["source"] = "crossref"
                     return new_paper
                 else:
-                    logging.debug(f"cr.search: Found! Title doesn't match! title={title}, result={title_f}")
+                    logging.debug(
+                        f"cr.search: Found! Title doesn't match! title={title}, result={title_f}"
+                    )
             else:
                 logging.debug(f"cr.search: Not found! title={title}")
+
     return None
 
 
@@ -169,10 +185,7 @@ def similar_search(title, rows):
     ENDPOINT = "https://api.crossref.org/works"
 
     # Set up the query parameters
-    params = {
-        "query.title": title,
-        "rows": rows  # Number of results to retrieve
-    }
+    params = {"query.title": title, "rows": rows}  # Number of results to retrieve
 
     # Send the API request
     response = requests.get(ENDPOINT, params=params, timeout=10)
@@ -186,12 +199,12 @@ def similar_search(title, rows):
         papers = data["message"]["items"]
         if len(papers) > 0:
             for paper in papers:
-                if(paper.get("title", "") != "" and len(paper["title"]) > 0):
+                if paper.get("title", "") != "" and len(paper["title"]) > 0:
                     paper_list.append(paper["title"][0])
                 else:
                     print("ERROR: Not found")
     return paper_list
-            
+
 
 def reference_doi_list(data):
     return "go"
@@ -218,9 +231,9 @@ def search_title_n_year_by_doi(doi):
     # Extract the relevant information from the response
     if data != "" and data.get("status", "") != "" and data["status"] == "ok":
         paper = data["message"]
-        
+
         # Access the paper information
-        if(paper.get("title", "") != "" and len(paper["title"]) > 0):
+        if paper.get("title", "") != "" and len(paper["title"]) > 0:
             title = paper["title"][0]
             year = _remake_year(paper.get("published", ""))
             return title, year
@@ -238,10 +251,7 @@ def similar_search(title, rows):
     ENDPOINT = "https://api.crossref.org/works"
 
     # Set up the query parameters
-    params = {
-        "query.title": title,
-        "rows": rows  # Number of results to retrieve
-    }
+    params = {"query.title": title, "rows": rows}  # Number of results to retrieve
 
     # Send the API request
     response = requests.get(ENDPOINT, params=params, timeout=10)
@@ -260,20 +270,27 @@ def similar_search(title, rows):
 
 
 def extract_authors_references(data):
-    if (data != "" or data != None):
+    if data != "" or data != None:
         authors = []
         references = pd.DataFrame(columns=["doi", "title", "crossref"])
         # get the authors
         if data.get("author", "") != "":
             for author in data["author"]:
-                author = " ".join([author.get("given", ""), author.get("family","")])
+                author = " ".join([author.get("given", ""), author.get("family", "")])
                 authors.append(author)
 
         # get the references
         if data["reference-count"] > 0:
             for ref in data["reference"]:
-                references = references.append({"doi": ref.get("DOI", ""), "title": ref.get("article-title", ""), "crossref": False if ref.get("DOI", "") == "" else True}, ignore_index=True)
-    
+                references = references.append(
+                    {
+                        "doi": ref.get("DOI", ""),
+                        "title": ref.get("article-title", ""),
+                        "crossref": False if ref.get("DOI", "") == "" else True,
+                    },
+                    ignore_index=True,
+                )
+
         return authors, references
     return None, None
 
@@ -289,7 +306,7 @@ def generate_title_auths_refs(df):
                 df.loc[index, "doi"] = cs["DOI"]
         else:
             cs = search_by_doi(ref["doi"])
-            if(cs.get("title", "") != "" and len(cs["title"]) > 0):
+            if cs.get("title", "") != "" and len(cs["title"]) > 0:
                 df.loc[index, "title"] = cs["title"][0]
             else:
                 print("ERROR: Can't find title.")
@@ -299,4 +316,4 @@ def generate_title_auths_refs(df):
             ref_auths, ref_refs = extract_authors_references(cs)
             df.loc[index, "authors"] = ref_auths
             df.loc[index, "refs"] = ref_refs.to_json()
-    return df     
+    return df

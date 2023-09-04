@@ -8,7 +8,10 @@ from requests.exceptions import ReadTimeout
 import logging
 import logging.config
 import string
+import time
 from thefuzz import fuzz
+
+sleep_duration = 0.0625  # to limit query based on ss API reuqirements to avoid Error 426. 1/16 (5000 query in 5 minutes)
 
 with open("settings.yaml") as yaml_file:
     settings = yaml.safe_load(yaml_file)
@@ -39,7 +42,7 @@ def _remake_authors(data):
         logging.warn(f"ss._remake_authors: No authors!")
     return ret
 
-def _remake_references(data, year):
+def _remake_references(data, year, skip_unknown_year):
     year_flag = False
     ret = []
     if len(data) > 0:
@@ -50,8 +53,9 @@ def _remake_references(data, year):
                 if int(y) >= year:
                     ret.append(i["title"])
             else:
-                logging.warn(f"ss._remake_references: Unknown year. title={i['title']}")
-                ret.append(i["title"])
+                logging.warn(f"ss._remake_references: Unknown year. skip_unknown_year={skip_unknown_year}, title={i['title']}")
+                if not skip_unknown_year:
+                    ret.append(i["title"])
     else:
         logging.warn(f"ss._remake_references: No references!")
     
@@ -75,7 +79,15 @@ def _remake_year(data):
         data = ""
     return data
 
-def search(title, start_year = 2010, filter_year_for_all = False):
+def search(title, start_year = 2010, filter_year_for_all = False, skip_unknown_year = False):
+    """
+    search\n
+    Parameters:\n
+    title = title of the paper\n
+    start_year = starting year to search\n
+    filter_year_for_all = Activate filter year so if year below the start_year result will be None\n
+    skip_unknown_year = if the year of the references are '' or unknown, [True] will skip the reference
+    """
     title_rm = _remove_punctuation(title)
     url = "https://api.semanticscholar.org/graph/v1/paper/search"
     headers = {'x-api-key': settings["SS_API"]}
@@ -83,6 +95,7 @@ def search(title, start_year = 2010, filter_year_for_all = False):
 
     data = ""
     try:
+        time.sleep(sleep_duration)
         if settings["USE_PROXY"] == True:
             response = requests.get(url, headers=headers, params=params, proxies=proxies, timeout=timeout)
         else:
@@ -113,7 +126,7 @@ def search(title, start_year = 2010, filter_year_for_all = False):
                 paper["year"] = _remake_year(paper["year"])
                 paper["tldr"] = _remake_tldr(paper.get("tldr", ""))
                 paper["authors"] = _remake_authors(paper.get("authors", []))
-                paper["references"] = _remake_references(paper["references"], start_year)
+                paper["references"] = _remake_references(paper["references"], start_year, skip_unknown_year)
                 paper["source"] = "semanticscholar"
                 return paper
             else:
