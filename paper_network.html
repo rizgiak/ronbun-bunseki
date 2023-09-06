@@ -5,6 +5,17 @@
     <script src="https://d3js.org/d3.v3.min.js"></script>
     <script>
 
+        // refresh data in backend
+        fetch("http://127.0.0.1:5000/load_data/")
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+
         const monitorWidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
         const monitorHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
 
@@ -18,8 +29,8 @@
 
         var force = d3.layout.force()
             .size([width, height])
-            .charge(-300)
-            .linkDistance(40)
+            .charge(-900)
+            .linkDistance(120)
             .on("tick", tick);
 
         var drag = force.drag()
@@ -59,7 +70,7 @@
             .attr("d", "M0,-5L10,0L0,5")
             .attr("fill", "#000");
 
-        d3.json("data/output_1_1.json", function (error, graph) {
+        d3.json("http://127.0.0.1:5000/get_st/", function (error, graph) {
             if (error) throw error;
 
             force
@@ -75,7 +86,7 @@
             node = node.data(graph.nodes)
                 .enter().append("circle")
                 .attr("class", "node")
-                .attr("r", function (d) { return d.size * d.size + 5; })
+                .attr("r", function (d) { return d.size * 5 + 5; })
                 .on("click", nodeClicked)
                 .on("mouseover", nodeMouseOver) // Add this line for tooltip display
                 .on("mouseout", nodeMouseOut); // Add this line for tooltip hiding
@@ -96,7 +107,7 @@
 
         function nodeMouseOver(d) {
             // Display the tooltip with node's name
-            tooltip.html(`${d.name}`)
+            tooltip.html(`${d.name} (${d.size})`)
                 .style("left", (d3.event.pageX + 10) + "px")
                 .style("top", (d3.event.pageY - 10) + "px")
                 .style("display", "block");
@@ -214,26 +225,28 @@
         function showNodeDetails(node, event) {
             const detailsDiv = d3.select("#node-details");
 
-            fetch(`http://127.0.0.1:5000/get_paper_detail/${node.name}`)
+            fetch(`http://127.0.0.1:5000/get_paper_detail/${node.id}`)
                 .then(response => response.json())
                 .then(jsonData => {
                     const abstract = jsonData.abstract;
+                    const year = jsonData.year;
                     const authors = jsonData.authors;
                     const fieldsOfStudy = jsonData.fieldsOfStudy;
                     const source = jsonData.source;
+                    if (jsonData.citationCount == -1) {
+                        jsonData.citationCount = "No data"
+                    }
                     const citationCount = jsonData.citationCount;
-                    if (citationCount == -1){
-                        citationCount = "No data"
+                    if (jsonData.influentialCitationCount == -1) {
+                        jsonData.influentialCitationCount = "No data"
                     }
                     const influentialCitationCount = jsonData.influentialCitationCount;
-                    if (influentialCitationCount == -1){
-                        influentialCitationCount = "No data"
-                    }
                     detailsDiv.style("display", "block")
                         .style("left", (10) + "px")
                         .style("top", (10) + "px")
                         .style("width", (monitorWidth / 2) + "px")
                         .html(`<strong>Title:</strong> ${node.name}<br>
+                               <strong>Year:</strong> ${year}<br>
                                <strong>Cited by:</strong> ${node.size}<br>
                                <strong>Abstract:</strong> ${abstract}<br>
                                <strong>Authors:</strong> ${authors}<br>

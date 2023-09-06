@@ -2,6 +2,7 @@ from journal_api import arxiv_api
 from journal_api import crossref_api
 from journal_api import googlebook_api
 from journal_api import semanticscholar_api
+import json
 import yaml
 import pandas as pd
 import logging
@@ -10,82 +11,134 @@ import logging.config
 with open("settings.yaml") as yaml_file:
     settings = yaml.safe_load(yaml_file)
 
-with open('logging_config.yaml', 'r') as config_file:
+with open("logging_config.yaml", "r") as config_file:
     log_config = yaml.safe_load(config_file)
 
 logging.config.dictConfig(log_config)
 
+
 class JournalAPI:
     def __init__(self):
         self._max_pos = 3
-        self._df = None
+        self.reset_dfst()
+        self._node_indices = (
+            {}
+        )  # A dictionary to store the mapping of node names to indices
+        self._data = {"nodes": [], "links": []}
 
-    def reset_df(self):
+    def reset_dfst(self):
+        """
+        reset DataFrame and SourceTarget data
+        """
         self._df = None
-    
-    def get_df(self):
-        return self._df
+        self._st = None
 
-    def _dic_library(self, title, pos, year = 2010, find_references = True, skip_unknown_year = False):
+    def get_dfst(self):
+        return self._df, self._st
+
+    def _dic_library(
+        self, title, pos, year=2010, find_references=True, skip_unknown_year=False
+    ):
         res = None
         if pos == 1:
             res = crossref_api.search(title, year, find_references, skip_unknown_year)
         elif pos == 2:
             # TODO: add proxy handler
             if not settings["USE_PROXY"]:
-                res = arxiv_api.search(title, year)    
+                res = arxiv_api.search(title, year)
         elif pos == 3:
             res = googlebook_api.search(title, year)
         else:
-            res = semanticscholar_api.search(title, year, filter_year_for_all=False, skip_unknown_year=skip_unknown_year) 
+            res = semanticscholar_api.search(
+                title,
+                year,
+                filter_year_for_all=False,
+                skip_unknown_year=skip_unknown_year,
+            )
         return res
 
-    def _remake_result(self, result = None, pos = 0, year = 2010, find_references = True, skip_unknown_year = False):
-        if (result == None):
+    def _remake_result(
+        self,
+        result=None,
+        pos=0,
+        year=2010,
+        find_references=True,
+        skip_unknown_year=False,
+    ):
+        if result == None:
             return None
         dic = ["abstract", "year", "fieldsOfStudy", "authors", "references"]
-        l   = [result[dic[0]] == "", result[dic[1]] == "", result[dic[2]] == "", len(result[dic[3]]) == 0, result[dic[4]] != -1 and len(result[dic[4]]) == 0]
+        l = [
+            result[dic[0]] == "",
+            result[dic[1]] == "",
+            result[dic[2]] == "",
+            len(result[dic[3]]) == 0,
+            result[dic[4]] != -1 and len(result[dic[4]]) == 0,
+        ]
 
-        if any(l): # data not completed
+        if any(l):  # data not completed
             logging.debug(f"journal_api._remake_result: l={l}")
             for i in range(pos + 1, self._max_pos + 1):
-                rc = self._dic_library(result["title"], pos = i, year = year, find_references = find_references, skip_unknown_year=skip_unknown_year)
-                if self._year_limitation(rc, year): # year limitation
-                    logging.debug(f"journal_api._remake_result: Year limitation. year={rc['year']}, start_year={rc}")
+                rc = self._dic_library(
+                    result["title"],
+                    pos=i,
+                    year=year,
+                    find_references=find_references,
+                    skip_unknown_year=skip_unknown_year,
+                )
+                if self._year_limitation(rc, year):  # year limitation
+                    logging.debug(
+                        f"journal_api._remake_result: Year limitation. year={rc['year']}, start_year={rc}"
+                    )
                     return None
                 if rc != None:
-                    r = [rc[dic[0]] == "", rc[dic[1]] == "", rc[dic[2]] == "", len(rc[dic[3]]) == 0, rc[dic[4]] != -1 and len(rc[dic[4]]) == 0]
+                    r = [
+                        rc[dic[0]] == "",
+                        rc[dic[1]] == "",
+                        rc[dic[2]] == "",
+                        len(rc[dic[3]]) == 0,
+                        rc[dic[4]] != -1 and len(rc[dic[4]]) == 0,
+                    ]
                     for index, value in enumerate(l):
-                        if(value == True and r[index] == False):
+                        if value == True and r[index] == False:
                             l[index] = False
                             result[dic[index]] = rc[dic[index]]
-                    if not any(l): # if [False, False, False, False]
+                    if not any(l):  # if [False, False, False, False]
                         break
 
         return result
 
     def _fix_references(self, result, year):
-        if (result == None):
+        if result == None:
             return None
-        
+
         if len(result["references"]) > 0:
             refs = []
-            for ti in (result["references"]):
+            for ti in result["references"]:
                 for i in range(self._max_pos + 1):
-                    res = self._dic_library(ti, i, year, find_references = False, skip_unknown_year = True)
-                    if(res != None):
+                    res = self._dic_library(
+                        ti, i, year, find_references=False, skip_unknown_year=True
+                    )
+                    if res != None:
                         if res["year"] != "" and res["year"] >= year:
                             refs.append(ti)
-                        break;
+                        break
             result["references"] = refs
         return result
 
     def _year_limitation(self, res, year):
-        if (res != None and res["year"] != "" and res["year"] < year):
+        if res != None and res["year"] != "" and res["year"] < year:
             return True
         return False
 
-    def search(self, title, start_year = 2010, find_references = True, fix_references = True, skip_unknown_year = False):
+    def search(
+        self,
+        title,
+        start_year=2010,
+        find_references=True,
+        fix_references=True,
+        skip_unknown_year=False,
+    ):
         """
         search\n
         Parameters:\n
@@ -97,32 +150,58 @@ class JournalAPI:
         """
         res = None
         for i in range(self._max_pos + 1):
-            res = self._dic_library(title, i, start_year, find_references, skip_unknown_year)
-            if self._year_limitation(res, start_year): # year limitation
-                logging.debug(f"journal_api.search: _dic_library, Year limitation. year={res['year']}, start_year={start_year}")
+            res = self._dic_library(
+                title, i, start_year, find_references, skip_unknown_year
+            )
+            if self._year_limitation(res, start_year):  # year limitation
+                logging.debug(
+                    f"journal_api.search: _dic_library, Year limitation. year={res['year']}, start_year={start_year}"
+                )
                 return None
-            res = self._remake_result(result = res, pos = i, year = start_year, find_references = find_references, skip_unknown_year=skip_unknown_year)
+            res = self._remake_result(
+                result=res,
+                pos=i,
+                year=start_year,
+                find_references=find_references,
+                skip_unknown_year=skip_unknown_year,
+            )
             if fix_references:
                 res = self._fix_references(res, start_year)
-            if(res != None):
-                break;
+            if res != None:
+                break
         return res
-    
 
     def _source_target(self, source, target):
         ret = pd.DataFrame(columns=["source", "target"])
         for t in target:
             ret = ret.append({"source": source, "target": t}, ignore_index=True)
         return ret
-    
 
-    def source_target_generator(self, title, title_list, level = 1, start_year = 2017, fix_references = False, skip_unknown_year = False):
+    def source_target_generator(
+        self,
+        title,
+        title_list,
+        level=1,
+        start_year=2017,
+        fix_references=False,
+        skip_unknown_year=True,
+    ):
         ret = pd.DataFrame(columns=["source", "target"])
-        if(level > 0):
-            logging.info(f"source_target_generator: level={level}, len={len(title_list)}, title={title}")
+        if level > 0:
+            logging.info(
+                f"source_target_generator: level={level}, len={len(title_list)}, title={title}"
+            )
             for index, title in enumerate(title_list):
-                logging.info(f"source_target_generator: [{level}]({index+1}/{len(title_list)}) title={title}")
-                src = self.search(title, start_year, find_references=True, fix_references=fix_references, skip_unknown_year=True)
+                logging.info(
+                    f"source_target_generator: [{level}]({index+1}/{len(title_list)}) title={title}"
+                )
+                src = self.search(
+                    title,
+                    start_year,
+                    find_references=True,
+                    fix_references=fix_references,
+                    skip_unknown_year=skip_unknown_year,
+                )
                 if src != None:
                     if self._df is None or self._df.empty:
                         self._df = pd.DataFrame([src])
@@ -132,16 +211,139 @@ class JournalAPI:
                             new_row = pd.Series(src)
                             self._df = self._df.append(new_row, ignore_index=True)
                         else:
-                            logging.debug(f"source_target_generator: Title already exists. title={src['title']}")
-                    
-                    if src["references"] != -1: # if conditional for references below start year
-                        st = self._source_target(src["title"],src["references"])
+                            logging.debug(
+                                f"source_target_generator: Title already exists. title={src['title']}"
+                            )
+
+                    # if conditional for references below start year
+                    if src["references"] != -1:
+                        st = self._source_target(src["title"], src["references"])
                         ret = pd.concat([ret, st], ignore_index=True)
                         lv = level - 1
+
+                        # if getting to the last level, we dont have to fix the reference one by one because there is no further impact
                         if lv == 1:
-                            ret = pd.concat([ret, self.source_target_generator(src["title"], src["references"], lv, start_year)], ignore_index=True)
+                            ret = pd.concat(
+                                [
+                                    ret,
+                                    self.source_target_generator(
+                                        title=src["title"],
+                                        title_list=src["references"],
+                                        level=lv,
+                                        start_year=start_year,
+                                        skip_unknown_year=skip_unknown_year,
+                                    ),
+                                ],
+                                ignore_index=True,
+                            )
                         else:
-                            ret = pd.concat([ret, self.source_target_generator(src["title"], src["references"], lv, start_year, fix_references)], ignore_index=True)
-                
+                            ret = pd.concat(
+                                [
+                                    ret,
+                                    self.source_target_generator(
+                                        title=src["title"],
+                                        title_list=src["references"],
+                                        level=lv,
+                                        start_year=start_year,
+                                        fix_references=fix_references,
+                                        skip_unknown_year=skip_unknown_year,
+                                    ),
+                                ],
+                                ignore_index=True,
+                            )
+
+        self._st = ret
         return ret
 
+    def df_remake(self):
+        """
+        Remake DataFrame from SourceTarget
+        """
+        if self._st is None:
+            logging.error(f"journal_api.df_remake: _st is None")
+            return False
+
+        for index, t in enumerate(self._st["target"]):
+            if len(self._df[self._df["title"] == t]) == 0:
+                logging.info(
+                    f"journal_api.df_remake: ({index + 1}/{len(self._st['target'])}), title={t}"
+                )
+                r = semanticscholar_api.search(t, 2018, True, True)
+
+                if r != None:
+                    new_row = pd.Series(r)
+                else:
+                    new_row = {}
+                    new_row["title"] = t
+                    new_row["abstract"] = ""
+                    new_row["tldr"] = ""
+                    new_row["year"] = ""
+                    new_row["fieldsOfStudy"] = ""
+                    new_row["authors"] = []
+                    new_row["references"] = []
+                    new_row["citationCount"] = -1
+                    new_row["influentialCitationCount"] = -1
+                    new_row["source"] = ""
+                self._df = self._df.append(new_row, ignore_index=True)
+
+        return True
+
+    def dfst_generator(
+        self,
+        title_list,
+        level=1,
+        start_year=2017,
+        fix_references=False,
+        skip_unknown_year=True,
+    ):
+        """
+        DataFrame and SourceTarget generator
+        """
+        self.source_target_generator(
+            "", title_list, level, start_year, fix_references, skip_unknown_year
+        )
+        self.df_remake()
+        return self.get_dfst()
+
+    def _get_node_index(self, node_name):
+        if node_name not in self._node_indices:
+            self._node_indices[node_name] = len(self._node_indices)
+            self._data["nodes"].append(
+                {"id": len(self._node_indices) - 1, "name": node_name, "size": 0}
+            )  # Add "id" key with value and "size" key with value 0 to each node
+        return self._node_indices[node_name]
+
+    def dump_dfst(self, df_filename=None, st_filename=None):
+        """
+        Dump to json file. Example: dump_dfst('df_data.json', 'st_data.json')
+        """
+        if df_filename is not None and self._df is not None:
+            self._df.to_json(df_filename, orient="records", indent=2)
+        
+        if st_filename is not None:
+            self._node_indices = {}
+            self._data = {"nodes": [], "links": []}
+
+            unique_rows = set()  # A set to store unique rows
+            for index, row in self._st.iterrows():
+                source_name = row["source"]
+                target_name = row["target"]
+                if (source_name, target_name) in unique_rows:  # Skip duplicated rows
+                    continue
+                unique_rows.add((source_name, target_name))
+
+                source_index = self._get_node_index(source_name)
+                target_index = self._get_node_index(target_name)
+
+                self._data["links"].append(
+                    {"source": source_index, "target": target_index}
+                )
+
+                # Increment the value of "size" for the target node
+                self._data["nodes"][target_index]["size"] += 1
+
+            # Save the data as JSON
+            with open(st_filename, "w") as json_file:
+                json.dump(self._data, json_file, indent=2)
+
+        return True

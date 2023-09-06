@@ -1,8 +1,8 @@
 import csv  
 import json  
   
-csv_file_path = 'test_1.csv'  
-json_file_path = 'output.json'  
+csv_file_path = 'data/output_5_st.csv'  
+json_file_path = 'data/output_5_st.json'  
   
 node_indices = {}  # A dictionary to store the mapping of node names to indices  
 data = {  

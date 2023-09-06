@@ -14,17 +14,27 @@ logging.config.dictConfig(log_config)
 
 class AppLib:
     def __init__(self) -> None:
-        with open('data/output_1.json', 'r') as file:
-            data = json.load(file)
-            self.df = pd.DataFrame(data)
+        self.load_data()
     
-    def search(self, title):
-        result = self.df[self.df["title"] == title]
+    def search(self, id):
+        title = self._st["nodes"][id]["name"]
+        result = self._df[self._df["title"] == title]
         if len(result) > 0:
             return result.iloc[0].to_dict()
         else:
             logging.error(f"AppLib.search: Not found! title={title}")
             return {}
+
+    def load_data(self):
+        with open(settings["DF_DATA"], 'r') as file:
+            data = json.load(file)
+            self._df = pd.DataFrame(data)
+        with open(settings["ST_DATA"], 'r') as json_file:
+            self._st = json.load(json_file)
+        return "OK"
+
+    def get_st(self):
+        return self._st
     
 
     
