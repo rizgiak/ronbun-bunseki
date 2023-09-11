@@ -171,9 +171,9 @@ def search(title, start_year=2010, find_references=True, skip_unknown_year=False
                     logging.debug(
                         f"cr.search: Found! Title doesn't match! title={title}, result={title_f}"
                     )
-            else:
-                logging.debug(f"cr.search: Not found! title={title}")
-
+                    return None
+    
+    logging.debug(f"cr.search: Not found! title={title}")
     return None
 
 

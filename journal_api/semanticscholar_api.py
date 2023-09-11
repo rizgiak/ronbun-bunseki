@@ -131,6 +131,7 @@ def search(title, start_year = 2010, filter_year_for_all = False, skip_unknown_y
                 return paper
             else:
                 logging.debug(f"ss.search: Found! Title doesn't match! title={title}, result={title_f}")
-        else:
-            logging.debug(f"ss.search: Not found! title={title}")
+                return None
+            
+    logging.debug(f"ss.search: Not found! title={title}")
     return None

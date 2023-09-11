@@ -2,6 +2,7 @@ from journal_api import arxiv_api
 from journal_api import crossref_api
 from journal_api import googlebook_api
 from journal_api import semanticscholar_api
+from journal_api import nii_api
 import json
 import yaml
 import pandas as pd
@@ -19,7 +20,7 @@ logging.config.dictConfig(log_config)
 
 class JournalAPI:
     def __init__(self):
-        self._max_pos = 3
+        self._max_pos = 4
         self.reset_dfst()
         self._node_indices = (
             {}
@@ -48,6 +49,8 @@ class JournalAPI:
                 res = arxiv_api.search(title, year)
         elif pos == 3:
             res = googlebook_api.search(title, year)
+        elif pos == 4:
+            res = nii_api.search(title, "jp")
         else:
             res = semanticscholar_api.search(
                 title,
