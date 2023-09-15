@@ -38,6 +38,14 @@ def _remove_punctuation(text):
     return text.translate(translator)
 
 
+def _remake_year(year):
+    ryear = str(year)
+    if len(ryear) >= 4:
+        ryear = int(ryear[:4])
+    else:
+        ryear = ""
+    return ryear
+
 def search(title, lang="jp"):
     """
     search\n
@@ -87,7 +95,7 @@ def search(title, lang="jp"):
             new_paper["title"] = str(item_title)
             new_paper["abstract"] = str(item_description)
             new_paper["tldr"] = ""
-            new_paper["year"] = int(year)
+            new_paper["year"] = _remake_year(year)
             new_paper["fieldsOfStudy"] = []
             new_paper["authors"] = [str(creator) for creator in creators]
             new_paper["references"] = []

@@ -46,7 +46,7 @@ def _remake_authors(data):
 
 def _add_title_to_ret(title, year, skip_unknown_year, ret, ref_year):
     if ref_year != "" and ref_year is not None:
-        if int(ref_year) >= year:
+        if int(ref_year[:4]) >= year:
             ret.append(title)
     else:
         logging.warn(
